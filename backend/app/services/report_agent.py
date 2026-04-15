@@ -886,6 +886,7 @@ class ReportAgent:
         graph_id: str,
         simulation_id: str,
         simulation_requirement: str,
+        project_id: Optional[str] = None,
         llm_client: Optional[LLMClient] = None,
         zep_tools: Optional[ZepToolsService] = None
     ):
@@ -902,6 +903,7 @@ class ReportAgent:
         self.graph_id = graph_id
         self.simulation_id = simulation_id
         self.simulation_requirement = simulation_requirement
+        self.project_id = project_id
         
         self.llm = llm_client or LLMClient()
         self.zep_tools = zep_tools or ZepToolsService()
@@ -915,6 +917,14 @@ class ReportAgent:
         self.console_logger: Optional[ReportConsoleLogger] = None
         
         logger.info(t('report.agentInitDone', graphId=graph_id, simulationId=simulation_id))
+
+    def _trim_text_to_budget(self, text: str, budget_chars: Optional[int] = None) -> str:
+        budget = budget_chars or Config.REPORT_CONTEXT_BUDGET_CHARS
+        if budget <= 0:
+            return ""
+        if len(text) <= budget:
+            return text
+        return text[: max(budget - 20, 0)] + "\n\n... [内容已按预算截断]"
     
     def _define_tools(self) -> Dict[str, Dict[str, Any]]:
         """定义可用工具"""
@@ -975,9 +985,10 @@ class ReportAgent:
                     graph_id=self.graph_id,
                     query=query,
                     simulation_requirement=self.simulation_requirement,
-                    report_context=ctx
+                    report_context=ctx,
+                    project_id=self.project_id
                 )
-                return result.to_text()
+                return self._trim_text_to_budget(result.to_text())
             
             elif tool_name == "panorama_search":
                 # 广度搜索 - 获取全貌
@@ -988,9 +999,10 @@ class ReportAgent:
                 result = self.zep_tools.panorama_search(
                     graph_id=self.graph_id,
                     query=query,
-                    include_expired=include_expired
+                    include_expired=include_expired,
+                    project_id=self.project_id
                 )
-                return result.to_text()
+                return self._trim_text_to_budget(result.to_text())
             
             elif tool_name == "quick_search":
                 # 简单搜索 - 快速检索
@@ -1001,9 +1013,10 @@ class ReportAgent:
                 result = self.zep_tools.quick_search(
                     graph_id=self.graph_id,
                     query=query,
-                    limit=limit
+                    limit=limit,
+                    project_id=self.project_id
                 )
-                return result.to_text()
+                return self._trim_text_to_budget(result.to_text())
             
             elif tool_name == "interview_agents":
                 # 深度采访 - 调用真实的OASIS采访API获取模拟Agent的回答（双平台）
@@ -1018,7 +1031,7 @@ class ReportAgent:
                     simulation_requirement=self.simulation_requirement,
                     max_agents=max_agents
                 )
-                return result.to_text()
+                return self._trim_text_to_budget(result.to_text())
             
             # ========== 向后兼容的旧工具（内部重定向到新工具） ==========
             
@@ -1029,7 +1042,7 @@ class ReportAgent:
             
             elif tool_name == "get_graph_statistics":
                 result = self.zep_tools.get_graph_statistics(self.graph_id)
-                return json.dumps(result, ensure_ascii=False, indent=2)
+                return self._trim_text_to_budget(json.dumps(result, ensure_ascii=False, indent=2))
             
             elif tool_name == "get_entity_summary":
                 entity_name = parameters.get("entity_name", "")
@@ -1037,7 +1050,7 @@ class ReportAgent:
                     graph_id=self.graph_id,
                     entity_name=entity_name
                 )
-                return json.dumps(result, ensure_ascii=False, indent=2)
+                return self._trim_text_to_budget(json.dumps(result, ensure_ascii=False, indent=2))
             
             elif tool_name == "get_simulation_context":
                 # 重定向到 insight_forge，因为它更强大
@@ -1052,7 +1065,7 @@ class ReportAgent:
                     entity_type=entity_type
                 )
                 result = [n.to_dict() for n in nodes]
-                return json.dumps(result, ensure_ascii=False, indent=2)
+                return self._trim_text_to_budget(json.dumps(result, ensure_ascii=False, indent=2))
             
             else:
                 return f"未知工具: {tool_name}。请使用以下工具之一: insight_forge, panorama_search, quick_search"
@@ -1157,7 +1170,8 @@ class ReportAgent:
         # 首先获取模拟上下文
         context = self.zep_tools.get_simulation_context(
             graph_id=self.graph_id,
-            simulation_requirement=self.simulation_requirement
+            simulation_requirement=self.simulation_requirement,
+            project_id=self.project_id
         )
         
         if progress_callback:
@@ -1170,7 +1184,11 @@ class ReportAgent:
             total_edges=context.get('graph_statistics', {}).get('total_edges', 0),
             entity_types=list(context.get('graph_statistics', {}).get('entity_types', {}).keys()),
             total_entities=context.get('total_entities', 0),
-            related_facts_json=json.dumps(context.get('related_facts', [])[:10], ensure_ascii=False, indent=2),
+            related_facts_json=json.dumps(
+                (context.get('related_facts', [])[:10] + [h.get('chunk_text', '') for h in context.get('world_info_hits', [])[:5]]),
+                ensure_ascii=False,
+                indent=2
+            ),
         )
 
         try:
@@ -1794,9 +1812,7 @@ class ReportAgent:
             report = ReportManager.get_report_by_simulation(self.simulation_id)
             if report and report.markdown_content:
                 # 限制报告长度，避免上下文过长
-                report_content = report.markdown_content[:15000]
-                if len(report.markdown_content) > 15000:
-                    report_content += "\n\n... [报告内容已截断] ..."
+                report_content = self._trim_text_to_budget(report.markdown_content)
         except Exception as e:
             logger.warning(t('report.fetchReportFailed', error=e))
         
@@ -1852,7 +1868,10 @@ class ReportAgent:
                 result = self._execute_tool(call["name"], call.get("parameters", {}))
                 tool_results.append({
                     "tool": call["name"],
-                    "result": result[:1500]  # 限制结果长度
+                    "result": self._trim_text_to_budget(
+                        result,
+                        max(1200, min(4000, Config.REPORT_CONTEXT_BUDGET_CHARS // 4)),
+                    ),
                 })
                 tool_calls_made.append(call)
             

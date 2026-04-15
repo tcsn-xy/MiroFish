@@ -211,7 +211,7 @@ class SimulationConfigGenerator:
     """
     
     # 上下文最大字符数
-    MAX_CONTEXT_LENGTH = 50000
+    MAX_CONTEXT_LENGTH = Config.SIMULATION_CONTEXT_BUDGET_CHARS
     # 每批生成的Agent数量
     AGENTS_PER_BATCH = 15
     
@@ -239,6 +239,7 @@ class SimulationConfigGenerator:
             api_key=self.api_key,
             base_url=self.base_url
         )
+        self.MAX_CONTEXT_LENGTH = Config.SIMULATION_CONTEXT_BUDGET_CHARS
     
     def generate_config(
         self,

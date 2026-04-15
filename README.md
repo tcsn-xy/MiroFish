@@ -109,22 +109,80 @@ Click the image to watch MiroFish's deep prediction of the lost ending based on 
 # Copy the example configuration file
 cp .env.example .env
 
-# Edit the .env file and fill in the required API keys
+# Edit the root .env file
 ```
 
-**Required Environment Variables:**
+The repository-root `.env` is the only manual configuration entrypoint. Database, Chroma, embedding, World Info, and runtime tuning are all configured there. You no longer need to edit `backend/application.yml`.
+
+**Full Environment Variable List:**
 
 ```env
-# LLM API Configuration (supports any LLM API with OpenAI SDK format)
-# Recommended: Alibaba Qwen-plus model via Bailian Platform: https://bailian.console.aliyun.com/
-# High consumption, try simulations with fewer than 40 rounds first
+# ===== Base runtime =====
+SECRET_KEY=mirofish-secret-key
+FLASK_DEBUG=True
+FLASK_HOST=0.0.0.0
+FLASK_PORT=5001
+
+# ===== LLM =====
 LLM_API_KEY=your_api_key
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL_NAME=qwen-plus
+LLM_DEFAULT_MAX_TOKENS=4096
 
-# Zep Cloud Configuration
-# Free monthly quota is sufficient for simple usage: https://app.getzep.com/
+# ===== Optional LLM boost =====
+LLM_BOOST_API_KEY=your_boost_api_key
+LLM_BOOST_BASE_URL=your_boost_base_url
+LLM_BOOST_MODEL_NAME=your_boost_model_name
+
+# ===== Zep =====
 ZEP_API_KEY=your_zep_api_key
+
+# ===== MySQL datasource =====
+DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/mirofish?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+DATASOURCE_USERNAME=root
+DATASOURCE_PASSWORD=123456
+
+# ===== Chroma =====
+CHROMA_MODE=persistent
+CHROMA_PERSIST_DIRECTORY=backend/uploads/chroma
+CHROMA_HOST=127.0.0.1
+CHROMA_PORT=8000
+CHROMA_COLLECTION_NAME=world_info
+
+# ===== Embedding =====
+EMBEDDING_PROVIDER=sentence_transformers
+EMBEDDING_MODEL_NAME=BAAI/bge-small-zh-v1.5
+EMBEDDING_BATCH_SIZE=16
+
+# ===== World Info =====
+WORLD_INFO_ENABLED=true
+WORLD_INFO_CHUNK_SIZE=1200
+WORLD_INFO_CHUNK_OVERLAP=200
+WORLD_INFO_SEARCH_TOP_K=8
+SIMULATION_CONTEXT_BUDGET_CHARS=50000
+REPORT_CONTEXT_BUDGET_CHARS=20000
+WORLD_INFO_INJECTION_CHARS=12000
+
+# ===== Runtime tuning =====
+OASIS_DEFAULT_MAX_ROUNDS=10
+REPORT_AGENT_MAX_TOOL_CALLS=5
+REPORT_AGENT_MAX_REFLECTION_ROUNDS=2
+REPORT_AGENT_TEMPERATURE=0.5
+```
+
+**Chroma Modes:**
+
+```env
+# Local persistent mode
+CHROMA_MODE=persistent
+CHROMA_PERSIST_DIRECTORY=backend/uploads/chroma
+```
+
+```env
+# External Chroma server mode
+CHROMA_MODE=http
+CHROMA_HOST=127.0.0.1
+CHROMA_PORT=8000
 ```
 
 #### 2. Install Dependencies
@@ -172,7 +230,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Reads `.env` from root directory by default, maps ports `3000 (frontend) / 5001 (backend)`
+Reads the repository-root `.env` by default and maps ports `3000 (frontend) / 5001 (backend)`. When `CHROMA_MODE=persistent`, Chroma data is stored under `backend/uploads/chroma`, which remains covered by the existing volume mapping.
 
 > Mirror address for faster pulling is provided as comments in `docker-compose.yml`, replace if needed.
 

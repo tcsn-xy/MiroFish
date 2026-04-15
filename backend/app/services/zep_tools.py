@@ -20,6 +20,8 @@ from ..utils.logger import get_logger
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_locale, t
 from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
+from ..world_info import get_world_info_service
+from ..world_info.utils import format_world_info_hits_text
 
 logger = get_logger('mirofish.zep_tools')
 
@@ -32,6 +34,7 @@ class SearchResult:
     nodes: List[Dict[str, Any]]
     query: str
     total_count: int
+    world_info_hits: List[Dict[str, Any]] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -39,7 +42,8 @@ class SearchResult:
             "edges": self.edges,
             "nodes": self.nodes,
             "query": self.query,
-            "total_count": self.total_count
+            "total_count": self.total_count,
+            "world_info_hits": self.world_info_hits
         }
     
     def to_text(self) -> str:
@@ -50,6 +54,10 @@ class SearchResult:
             text_parts.append("\n### 相关事实:")
             for i, fact in enumerate(self.facts, 1):
                 text_parts.append(f"{i}. {fact}")
+
+        world_info_text = format_world_info_hits_text(self.world_info_hits)
+        if world_info_text:
+            text_parts.append(world_info_text)
         
         return "\n".join(text_parts)
 
@@ -154,6 +162,7 @@ class InsightForgeResult:
     total_facts: int = 0
     total_entities: int = 0
     total_relationships: int = 0
+    world_info_hits: List[Dict[str, Any]] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -165,7 +174,8 @@ class InsightForgeResult:
             "relationship_chains": self.relationship_chains,
             "total_facts": self.total_facts,
             "total_entities": self.total_entities,
-            "total_relationships": self.total_relationships
+            "total_relationships": self.total_relationships,
+            "world_info_hits": self.world_info_hits
         }
     
     def to_text(self) -> str:
@@ -207,6 +217,10 @@ class InsightForgeResult:
             text_parts.append(f"\n### 【关系链】")
             for chain in self.relationship_chains:
                 text_parts.append(f"- {chain}")
+
+        world_info_text = format_world_info_hits_text(self.world_info_hits)
+        if world_info_text:
+            text_parts.append(world_info_text)
         
         return "\n".join(text_parts)
 
@@ -233,6 +247,7 @@ class PanoramaResult:
     total_edges: int = 0
     active_count: int = 0
     historical_count: int = 0
+    world_info_hits: List[Dict[str, Any]] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -244,7 +259,8 @@ class PanoramaResult:
             "total_nodes": self.total_nodes,
             "total_edges": self.total_edges,
             "active_count": self.active_count,
-            "historical_count": self.historical_count
+            "historical_count": self.historical_count,
+            "world_info_hits": self.world_info_hits
         }
     
     def to_text(self) -> str:
@@ -277,6 +293,10 @@ class PanoramaResult:
             for node in self.all_nodes:
                 entity_type = next((l for l in node.labels if l not in ["Entity", "Node"]), "实体")
                 text_parts.append(f"- **{node.name}** ({entity_type})")
+
+        world_info_text = format_world_info_hits_text(self.world_info_hits)
+        if world_info_text:
+            text_parts.append(world_info_text)
         
         return "\n".join(text_parts)
 
@@ -439,6 +459,20 @@ class ZepToolsService:
             self._llm_client = LLMClient()
         return self._llm_client
     
+    def _world_info_hits(self, project_id: Optional[str], query: str, top_k: int = None) -> List[Dict[str, Any]]:
+        if not project_id or not query:
+            return []
+        try:
+            hits = get_world_info_service().search(
+                project_id=project_id,
+                query=query,
+                top_k=top_k or Config.WORLD_INFO_SEARCH_TOP_K,
+            )
+            return [hit.to_dict() for hit in hits]
+        except Exception as exc:
+            logger.warning(f"world info search skipped: {exc}")
+            return []
+
     def _call_with_retry(self, func, operation_name: str, max_retries: int = None):
         """带重试机制的API调用"""
         max_retries = max_retries or self.MAX_RETRIES
@@ -891,7 +925,8 @@ class ZepToolsService:
         self, 
         graph_id: str,
         simulation_requirement: str,
-        limit: int = 30
+        limit: int = 30,
+        project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         获取模拟相关的上下文信息
@@ -931,13 +966,20 @@ class ZepToolsService:
                     "type": custom_labels[0],
                     "summary": node.summary
                 })
+
+        world_info_hits = self._world_info_hits(
+            project_id=project_id,
+            query=simulation_requirement,
+            top_k=min(limit, Config.WORLD_INFO_SEARCH_TOP_K),
+        )
         
         return {
             "simulation_requirement": simulation_requirement,
             "related_facts": search_result.facts,
             "graph_statistics": stats,
             "entities": entities[:limit],  # 限制数量
-            "total_entities": len(entities)
+            "total_entities": len(entities),
+            "world_info_hits": world_info_hits,
         }
     
     # ========== 核心检索工具（优化后） ==========
@@ -948,7 +990,8 @@ class ZepToolsService:
         query: str,
         simulation_requirement: str,
         report_context: str = "",
-        max_sub_queries: int = 5
+        max_sub_queries: int = 5,
+        project_id: Optional[str] = None
     ) -> InsightForgeResult:
         """
         【InsightForge - 深度洞察检索】
@@ -1086,6 +1129,7 @@ class ZepToolsService:
         result.relationship_chains = relationship_chains
         result.total_relationships = len(relationship_chains)
         
+        result.world_info_hits = self._world_info_hits(project_id, query, top_k=Config.WORLD_INFO_SEARCH_TOP_K)
         logger.info(t("console.insightForgeComplete", facts=result.total_facts, entities=result.total_entities, relationships=result.total_relationships))
         return result
     
@@ -1147,7 +1191,8 @@ class ZepToolsService:
         graph_id: str,
         query: str,
         include_expired: bool = True,
-        limit: int = 50
+        limit: int = 50,
+        project_id: Optional[str] = None
     ) -> PanoramaResult:
         """
         【PanoramaSearch - 广度搜索】
@@ -1231,6 +1276,7 @@ class ZepToolsService:
         result.active_count = len(active_facts)
         result.historical_count = len(historical_facts)
         
+        result.world_info_hits = self._world_info_hits(project_id, query, top_k=Config.WORLD_INFO_SEARCH_TOP_K)
         logger.info(t("console.panoramaSearchComplete", active=result.active_count, historical=result.historical_count))
         return result
     
@@ -1238,7 +1284,8 @@ class ZepToolsService:
         self,
         graph_id: str,
         query: str,
-        limit: int = 10
+        limit: int = 10,
+        project_id: Optional[str] = None
     ) -> SearchResult:
         """
         【QuickSearch - 简单搜索】
@@ -1266,6 +1313,7 @@ class ZepToolsService:
             scope="edges"
         )
         
+        result.world_info_hits = self._world_info_hits(project_id, query, top_k=limit)
         logger.info(t("console.quickSearchComplete", count=result.total_count))
         return result
     

@@ -32,6 +32,10 @@ dependencies = [
     # 工具库
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
+    "PyYAML>=6.0.0",
+    "pymysql>=1.1.0",
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.0.0",
 ]
 
 [project.optional-dependencies]

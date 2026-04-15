@@ -16,6 +16,7 @@ from ..services.simulation_runner import SimulationRunner, RunnerStatus
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
 from ..models.project import ProjectManager
+from ..world_info import get_world_info_service
 
 logger = get_logger('mirofish.api.simulation')
 
@@ -463,6 +464,18 @@ def prepare_simulation():
         
         # 获取文档文本
         document_text = ProjectManager.get_extracted_text(state.project_id) or ""
+        try:
+            world_info_text = get_world_info_service().build_context_text(
+                project_id=state.project_id,
+                query=simulation_requirement,
+                top_k=Config.WORLD_INFO_SEARCH_TOP_K,
+                budget_chars=Config.WORLD_INFO_INJECTION_CHARS,
+                heading="世界信息记忆",
+            )
+            if world_info_text:
+                document_text = f"{world_info_text}\n\n{document_text}" if document_text else world_info_text
+        except Exception as exc:
+            logger.warning(f"world info injection skipped: {exc}")
         
         entity_types_list = data.get('entity_types')
         use_llm_for_profiles = data.get('use_llm_for_profiles', True)
