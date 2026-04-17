@@ -16,6 +16,7 @@ from ..config import Config
 from ..utils.logger import get_logger
 from .zep_entity_reader import ZepEntityReader, FilteredEntities
 from .oasis_profile_generator import OasisProfileGenerator, OasisAgentProfile
+from .simulation_files import load_profiles
 from .simulation_config_generator import SimulationConfigGenerator, SimulationParameters
 from ..utils.locale import t
 
@@ -123,22 +124,17 @@ class SimulationManager:
     4. 准备预设脚本所需的所有文件
     """
     
-    # 模拟数据存储目录
-    SIMULATION_DATA_DIR = os.path.join(
-        os.path.dirname(__file__), 
-        '../../uploads/simulations'
-    )
-    
     def __init__(self):
+        self.simulation_data_dir = Config.OASIS_SIMULATION_DATA_DIR
         # 确保目录存在
-        os.makedirs(self.SIMULATION_DATA_DIR, exist_ok=True)
+        os.makedirs(self.simulation_data_dir, exist_ok=True)
         
         # 内存中的模拟状态缓存
         self._simulations: Dict[str, SimulationState] = {}
     
     def _get_simulation_dir(self, simulation_id: str) -> str:
         """获取模拟数据目录"""
-        sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
+        sim_dir = os.path.join(self.simulation_data_dir, simulation_id)
         os.makedirs(sim_dir, exist_ok=True)
         return sim_dir
     
@@ -464,10 +460,10 @@ class SimulationManager:
         """列出所有模拟"""
         simulations = []
         
-        if os.path.exists(self.SIMULATION_DATA_DIR):
-            for sim_id in os.listdir(self.SIMULATION_DATA_DIR):
+        if os.path.exists(self.simulation_data_dir):
+            for sim_id in os.listdir(self.simulation_data_dir):
                 # 跳过隐藏文件（如 .DS_Store）和非目录文件
-                sim_path = os.path.join(self.SIMULATION_DATA_DIR, sim_id)
+                sim_path = os.path.join(self.simulation_data_dir, sim_id)
                 if sim_id.startswith('.') or not os.path.isdir(sim_path):
                     continue
                 
@@ -485,13 +481,7 @@ class SimulationManager:
             raise ValueError(f"模拟不存在: {simulation_id}")
         
         sim_dir = self._get_simulation_dir(simulation_id)
-        profile_path = os.path.join(sim_dir, f"{platform}_profiles.json")
-        
-        if not os.path.exists(profile_path):
-            return []
-        
-        with open(profile_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        return load_profiles(sim_dir, platform)
     
     def get_simulation_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
         """获取模拟配置"""

@@ -177,6 +177,8 @@ class Config:
     LLM_DEFAULT_MAX_TOKENS = int(_get_nested(APP_CONFIG, "llm.default_max_tokens", 4096))
 
     ZEP_API_KEY = os.environ.get("ZEP_API_KEY")
+    ZEP_TRUST_ENV = os.environ.get("ZEP_TRUST_ENV", "false").lower() in {"1", "true", "yes", "on"}
+    ZEP_TIMEOUT_SECONDS = float(os.environ.get("ZEP_TIMEOUT_SECONDS", "60"))
 
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024
     UPLOAD_FOLDER = os.path.join(BACKEND_DIR, "uploads")

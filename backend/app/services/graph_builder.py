@@ -10,11 +10,11 @@ import threading
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 
-from zep_cloud.client import Zep
 from zep_cloud import EpisodeData, EntityEdgeSourceTarget
 
 from ..config import Config
 from ..models.task import TaskManager, TaskStatus
+from ..utils.zep_client import build_zep_client, normalize_zep_exception
 from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
 from .text_processor import TextProcessor
 from ..utils.locale import t, get_locale, set_locale
@@ -48,8 +48,14 @@ class GraphBuilderService:
         if not self.api_key:
             raise ValueError("ZEP_API_KEY 未配置")
         
-        self.client = Zep(api_key=self.api_key)
+        self.client = build_zep_client(api_key=self.api_key)
         self.task_manager = TaskManager()
+
+    def _call_zep(self, func: Callable[[], Any]) -> Any:
+        try:
+            return func()
+        except Exception as exc:
+            raise normalize_zep_exception(exc) from exc
     
     def build_graph_async(
         self,
@@ -194,10 +200,12 @@ class GraphBuilderService:
         """创建Zep图谱（公开方法）"""
         graph_id = f"mirofish_{uuid.uuid4().hex[:16]}"
         
-        self.client.graph.create(
-            graph_id=graph_id,
-            name=name,
-            description="MiroFish Social Simulation Graph"
+        self._call_zep(
+            lambda: self.client.graph.create(
+                graph_id=graph_id,
+                name=name,
+                description="MiroFish Social Simulation Graph"
+            )
         )
         
         return graph_id
@@ -285,10 +293,12 @@ class GraphBuilderService:
         
         # 调用Zep API设置本体
         if entity_types or edge_definitions:
-            self.client.graph.set_ontology(
-                graph_ids=[graph_id],
-                entities=entity_types if entity_types else None,
-                edges=edge_definitions if edge_definitions else None,
+            self._call_zep(
+                lambda: self.client.graph.set_ontology(
+                    graph_ids=[graph_id],
+                    entities=entity_types if entity_types else None,
+                    edges=edge_definitions if edge_definitions else None,
+                )
             )
     
     def add_text_batches(
@@ -322,9 +332,11 @@ class GraphBuilderService:
             
             # 发送到Zep
             try:
-                batch_result = self.client.graph.add_batch(
-                    graph_id=graph_id,
-                    episodes=episodes
+                batch_result = self._call_zep(
+                    lambda: self.client.graph.add_batch(
+                        graph_id=graph_id,
+                        episodes=episodes
+                    )
                 )
                 
                 # 收集返回的 episode uuid
@@ -376,7 +388,7 @@ class GraphBuilderService:
             # 检查每个 episode 的处理状态
             for ep_uuid in list(pending_episodes):
                 try:
-                    episode = self.client.graph.episode.get(uuid_=ep_uuid)
+                    episode = self._call_zep(lambda: self.client.graph.episode.get(uuid_=ep_uuid))
                     is_processed = getattr(episode, 'processed', False)
                     
                     if is_processed:
@@ -502,5 +514,5 @@ class GraphBuilderService:
     
     def delete_graph(self, graph_id: str):
         """删除图谱"""
-        self.client.graph.delete(graph_id=graph_id)
+        self._call_zep(lambda: self.client.graph.delete(graph_id=graph_id))
 

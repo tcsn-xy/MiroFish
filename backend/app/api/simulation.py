@@ -357,6 +357,105 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
         return False, {"reason": f"读取状态文件失败: {str(e)}"}
 
 
+def _check_simulation_prepared_legacy(simulation_id: str) -> tuple:
+    """
+    Check whether a simulation has all files needed for the enabled platforms.
+    """
+    import os
+    import json
+    from ..config import Config
+    from ..services.simulation_files import count_profiles
+
+    simulation_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
+
+    if not os.path.exists(simulation_dir):
+        return False, {"reason": "妯℃嫙鐩綍涓嶅瓨鍦?"}
+
+    state_file = os.path.join(simulation_dir, "state.json")
+    try:
+        with open(state_file, 'r', encoding='utf-8') as f:
+            state_data = json.load(f)
+
+        enable_twitter = state_data.get("enable_twitter", True)
+        enable_reddit = state_data.get("enable_reddit", True)
+
+        required_files = ["state.json", "simulation_config.json"]
+        if enable_reddit:
+            required_files.append("reddit_profiles.json")
+        if enable_twitter:
+            required_files.append("twitter_profiles.csv")
+
+        existing_files = []
+        missing_files = []
+        for filename in required_files:
+            file_path = os.path.join(simulation_dir, filename)
+            if os.path.exists(file_path):
+                existing_files.append(filename)
+            else:
+                missing_files.append(filename)
+
+        if missing_files:
+            return False, {
+                "reason": "缂哄皯蹇呰鏂囦欢",
+                "missing_files": missing_files,
+                "existing_files": existing_files,
+            }
+
+        status = state_data.get("status", "")
+        config_generated = state_data.get("config_generated", False)
+
+        logger.debug(
+            f"检测模拟准备状态: {simulation_id}, status={status}, config_generated={config_generated}"
+        )
+
+        prepared_statuses = ["ready", "preparing", "running", "completed", "stopped", "failed"]
+        if status in prepared_statuses and config_generated:
+            profile_platform = "reddit" if enable_reddit else "twitter"
+            profiles_count = count_profiles(simulation_dir, profile_platform)
+
+            if status == "preparing":
+                try:
+                    state_data["status"] = "ready"
+                    from datetime import datetime
+                    state_data["updated_at"] = datetime.now().isoformat()
+                    with open(state_file, 'w', encoding='utf-8') as f:
+                        json.dump(state_data, f, ensure_ascii=False, indent=2)
+                    logger.info(f"自动更新模拟状态: {simulation_id} preparing -> ready")
+                    status = "ready"
+                except Exception as e:
+                    logger.warning(f"自动更新状态失败: {e}")
+
+            logger.info(
+                f"模拟 {simulation_id} 检测结果: 已准备完成 "
+                f"(status={status}, config_generated={config_generated})"
+            )
+            return True, {
+                "status": status,
+                "entities_count": state_data.get("entities_count", 0),
+                "profiles_count": profiles_count,
+                "entity_types": state_data.get("entity_types", []),
+                "config_generated": config_generated,
+                "created_at": state_data.get("created_at"),
+                "updated_at": state_data.get("updated_at"),
+                "existing_files": existing_files,
+            }
+
+        logger.warning(
+            f"模拟 {simulation_id} 检测结果: 未准备完成 "
+            f"(status={status}, config_generated={config_generated})"
+        )
+        return False, {
+            "reason": (
+                f"状态不在已准备列表中或config_generated为false: "
+                f"status={status}, config_generated={config_generated}"
+            ),
+            "status": status,
+            "config_generated": config_generated,
+        }
+    except Exception as e:
+        return False, {"reason": f"读取状态文件失败: {str(e)}"}
+
+
 @simulation_bp.route('/prepare', methods=['POST'])
 def prepare_simulation():
     """

@@ -13,12 +13,11 @@ import json
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 
-from zep_cloud.client import Zep
-
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_locale, t
+from ..utils.zep_client import build_zep_client
 from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
 from ..world_info import get_world_info_service
 from ..world_info.utils import format_world_info_hits_text
@@ -447,7 +446,7 @@ class ZepToolsService:
         if not self.api_key:
             raise ValueError("ZEP_API_KEY 未配置")
         
-        self.client = Zep(api_key=self.api_key)
+        self.client = build_zep_client(api_key=self.api_key)
         # LLM客户端用于InsightForge生成子问题
         self._llm_client = llm_client
         logger.info(t("console.zepToolsInitialized"))

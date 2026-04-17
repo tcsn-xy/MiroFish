@@ -224,19 +224,51 @@
                 <template v-if="action.action_type === 'FOLLOW'">
                   <div class="follow-info">
                     <svg class="icon-small" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
-                    <span class="follow-label">Followed @{{ action.action_args?.target_user || action.action_args?.user_id || 'User' }}</span>
+                    <span class="follow-label">Followed @{{ action.action_args?.target_user_name || action.action_args?.target_user || action.action_args?.user_id || 'User' }}</span>
                   </div>
                 </template>
 
-                <!-- UPVOTE / DOWNVOTE -->
-                <template v-if="action.action_type === 'UPVOTE_POST' || action.action_type === 'DOWNVOTE_POST'">
+                <!-- LIKE / DISLIKE POST -->
+                <template v-if="action.action_type === 'DISLIKE_POST'">
                   <div class="vote-info">
-                    <svg v-if="action.action_type === 'UPVOTE_POST'" class="icon-small" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                    <svg v-else class="icon-small" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    <span class="vote-label">{{ action.action_type === 'UPVOTE_POST' ? 'Upvoted' : 'Downvoted' }} Post</span>
+                    <svg class="icon-small" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    <span class="vote-label">Disliked Post</span>
                   </div>
                   <div v-if="action.action_args?.post_content" class="voted-content">
                     "{{ truncateContent(action.action_args.post_content, 120) }}"
+                  </div>
+                </template>
+
+                <template v-if="action.action_type === 'LIKE_COMMENT' || action.action_type === 'DISLIKE_COMMENT'">
+                  <div class="vote-info">
+                    <svg class="icon-small" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                    <span class="vote-label">{{ action.action_type === 'LIKE_COMMENT' ? 'Liked' : 'Disliked' }} @{{ action.action_args?.comment_author_name || 'User' }}'s comment</span>
+                  </div>
+                  <div v-if="action.action_args?.comment_content" class="voted-content">
+                    "{{ truncateContent(action.action_args.comment_content, 120) }}"
+                  </div>
+                </template>
+
+                <template v-if="action.action_type === 'SEARCH_USER'">
+                  <div class="search-info">
+                    <svg class="icon-small" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <span class="search-label">User Search:</span>
+                    <span class="search-query">"{{ action.action_args?.query || action.action_args?.keyword || '' }}"</span>
+                  </div>
+                </template>
+
+                <template v-if="action.action_type === 'TREND' || action.action_type === 'REFRESH' || action.action_type === 'MUTE'">
+                  <div class="idle-info">
+                    <svg class="icon-small" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    <span class="idle-label">
+                      {{
+                        action.action_type === 'MUTE'
+                          ? `Muted @${action.action_args?.target_user_name || action.action_args?.user_id || 'User'}`
+                          : action.action_type === 'TREND'
+                            ? 'Checked Trends'
+                            : 'Refreshed Feed'
+                      }}
+                    </span>
                   </div>
                 </template>
 
@@ -249,7 +281,7 @@
                 </template>
 
                 <!-- 通用回退：未知类型或有 content 但未被上述处理 -->
-                <div v-if="!['CREATE_POST', 'QUOTE_POST', 'REPOST', 'LIKE_POST', 'CREATE_COMMENT', 'SEARCH_POSTS', 'FOLLOW', 'UPVOTE_POST', 'DOWNVOTE_POST', 'DO_NOTHING'].includes(action.action_type) && action.action_args?.content" class="content-text">
+                <div v-if="!['CREATE_POST', 'QUOTE_POST', 'REPOST', 'LIKE_POST', 'DISLIKE_POST', 'CREATE_COMMENT', 'LIKE_COMMENT', 'DISLIKE_COMMENT', 'SEARCH_POSTS', 'SEARCH_USER', 'FOLLOW', 'TREND', 'REFRESH', 'MUTE', 'DO_NOTHING'].includes(action.action_type) && action.action_args?.content" class="content-text">
                   {{ action.action_args.content }}
                 </div>
               </div>
@@ -597,14 +629,18 @@ const getActionTypeLabel = (type) => {
     'CREATE_POST': 'POST',
     'REPOST': 'REPOST',
     'LIKE_POST': 'LIKE',
+    'DISLIKE_POST': 'DISLIKE',
     'CREATE_COMMENT': 'COMMENT',
     'LIKE_COMMENT': 'LIKE',
+    'DISLIKE_COMMENT': 'DISLIKE',
     'DO_NOTHING': 'IDLE',
     'FOLLOW': 'FOLLOW',
     'SEARCH_POSTS': 'SEARCH',
+    'SEARCH_USER': 'SEARCH',
     'QUOTE_POST': 'QUOTE',
-    'UPVOTE_POST': 'UPVOTE',
-    'DOWNVOTE_POST': 'DOWNVOTE'
+    'TREND': 'TREND',
+    'REFRESH': 'REFRESH',
+    'MUTE': 'MUTE'
   }
   return labels[type] || type || 'UNKNOWN'
 }
@@ -614,13 +650,17 @@ const getActionTypeClass = (type) => {
     'CREATE_POST': 'badge-post',
     'REPOST': 'badge-action',
     'LIKE_POST': 'badge-action',
+    'DISLIKE_POST': 'badge-action',
     'CREATE_COMMENT': 'badge-comment',
     'LIKE_COMMENT': 'badge-action',
+    'DISLIKE_COMMENT': 'badge-action',
     'QUOTE_POST': 'badge-post',
     'FOLLOW': 'badge-meta',
     'SEARCH_POSTS': 'badge-meta',
-    'UPVOTE_POST': 'badge-action',
-    'DOWNVOTE_POST': 'badge-action',
+    'SEARCH_USER': 'badge-meta',
+    'TREND': 'badge-meta',
+    'REFRESH': 'badge-meta',
+    'MUTE': 'badge-meta',
     'DO_NOTHING': 'badge-idle'
   }
   return classes[type] || 'badge-default'

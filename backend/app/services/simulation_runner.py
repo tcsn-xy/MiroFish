@@ -435,7 +435,8 @@ class SimulationRunner:
             
             # 设置工作目录为模拟目录（数据库等文件会生成在此）
             # 使用 start_new_session=True 创建新的进程组，确保可以通过 os.killpg 终止所有子进程
-            process = subprocess.Popen(
+            try:
+                process = subprocess.Popen(
                 cmd,
                 cwd=sim_dir,
                 stdout=main_log_file,
@@ -445,7 +446,10 @@ class SimulationRunner:
                 bufsize=1,
                 env=env,  # 传递带有 UTF-8 设置的环境变量
                 start_new_session=True,  # 创建新进程组，确保服务器关闭时能终止所有相关进程
-            )
+                )
+            except Exception:
+                main_log_file.close()
+                raise
             
             # 保存文件句柄以便后续关闭
             cls._stdout_files[simulation_id] = main_log_file

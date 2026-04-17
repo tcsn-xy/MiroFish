@@ -12,11 +12,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from queue import Queue, Empty
 
-from zep_cloud.client import Zep
-
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
+from ..utils.zep_client import build_zep_client
 
 logger = get_logger('mirofish.zep_graph_memory_updater')
 
@@ -243,7 +242,7 @@ class ZepGraphMemoryUpdater:
         if not self.api_key:
             raise ValueError("ZEP_API_KEY未配置")
         
-        self.client = Zep(api_key=self.api_key)
+        self.client = build_zep_client(api_key=self.api_key)
         
         # 活动队列
         self._activity_queue: Queue = Queue()

@@ -1,6 +1,7 @@
 import importlib
 import os
 import sys
+from unittest.mock import patch
 
 
 def _reload_config(monkeypatch, overrides=None):
@@ -15,6 +16,8 @@ def _reload_config(monkeypatch, overrides=None):
         "LLM_MODEL_NAME",
         "LLM_DEFAULT_MAX_TOKENS",
         "ZEP_API_KEY",
+        "ZEP_TRUST_ENV",
+        "ZEP_TIMEOUT_SECONDS",
         "DATASOURCE_URL",
         "DATASOURCE_USERNAME",
         "DATASOURCE_PASSWORD",
@@ -44,7 +47,8 @@ def _reload_config(monkeypatch, overrides=None):
         monkeypatch.setenv(key, value)
 
     sys.modules.pop("app.config", None)
-    return importlib.import_module("app.config")
+    with patch("dotenv.load_dotenv", return_value=False):
+        return importlib.import_module("app.config")
 
 
 def test_config_uses_env_only_without_application_yml(monkeypatch):
@@ -117,3 +121,20 @@ def test_config_defaults_still_work(monkeypatch):
     )
     assert config_module.Config.WORLD_INFO_CHUNK_SIZE == 1200
     assert config_module.Config.REPORT_AGENT_TEMPERATURE == 0.5
+    assert config_module.Config.ZEP_TRUST_ENV is False
+    assert config_module.Config.ZEP_TIMEOUT_SECONDS == 60.0
+
+
+def test_config_supports_zep_network_overrides(monkeypatch):
+    config_module = _reload_config(
+        monkeypatch,
+        {
+            "LLM_API_KEY": "test-key",
+            "ZEP_API_KEY": "test-zep",
+            "ZEP_TRUST_ENV": "true",
+            "ZEP_TIMEOUT_SECONDS": "12.5",
+        },
+    )
+
+    assert config_module.Config.ZEP_TRUST_ENV is True
+    assert config_module.Config.ZEP_TIMEOUT_SECONDS == 12.5
