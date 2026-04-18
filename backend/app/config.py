@@ -63,6 +63,13 @@ DEFAULT_APP_CONFIG: Dict[str, Any] = {
         "report_context_budget_chars": 20000,
         "world_info_injection_chars": 12000,
     },
+    "consensus": {
+        "enabled": False,
+        "model_name": "",
+        "agent_count": 10,
+        "round_interval_seconds": 86400,
+        "native_search_extra_body": "{}",
+    },
 }
 
 
@@ -115,6 +122,11 @@ ENV_TO_CONFIG = {
     "SIMULATION_CONTEXT_BUDGET_CHARS": "world_info.simulation_context_budget_chars",
     "REPORT_CONTEXT_BUDGET_CHARS": "world_info.report_context_budget_chars",
     "WORLD_INFO_INJECTION_CHARS": "world_info.world_info_injection_chars",
+    "CONSENSUS_ENABLED": "consensus.enabled",
+    "CONSENSUS_MODEL_NAME": "consensus.model_name",
+    "CONSENSUS_AGENT_COUNT": "consensus.agent_count",
+    "CONSENSUS_ROUND_INTERVAL_SECONDS": "consensus.round_interval_seconds",
+    "CONSENSUS_NATIVE_SEARCH_EXTRA_BODY": "consensus.native_search_extra_body",
 }
 
 
@@ -127,6 +139,7 @@ def _load_application_config() -> Dict[str, Any]:
         },
         "embedding": dict(DEFAULT_APP_CONFIG["embedding"]),
         "world_info": dict(DEFAULT_APP_CONFIG["world_info"]),
+        "consensus": dict(DEFAULT_APP_CONFIG["consensus"]),
     }
     for env_name, dotted_path in ENV_TO_CONFIG.items():
         if env_name in os.environ:
@@ -247,6 +260,15 @@ class Config:
     WORLD_INFO_INJECTION_CHARS = int(
         _get_nested(APP_CONFIG, "world_info.world_info_injection_chars", 12000)
     )
+    CONSENSUS_ENABLED = bool(_get_nested(APP_CONFIG, "consensus.enabled", False))
+    CONSENSUS_MODEL_NAME = _get_nested(APP_CONFIG, "consensus.model_name", "") or LLM_MODEL_NAME
+    CONSENSUS_AGENT_COUNT = int(_get_nested(APP_CONFIG, "consensus.agent_count", 10))
+    CONSENSUS_ROUND_INTERVAL_SECONDS = int(
+        _get_nested(APP_CONFIG, "consensus.round_interval_seconds", 86400)
+    )
+    CONSENSUS_NATIVE_SEARCH_EXTRA_BODY = _get_nested(
+        APP_CONFIG, "consensus.native_search_extra_body", "{}"
+    )
 
     @classmethod
     def get_mysql_config(cls) -> Dict[str, Any]:
@@ -268,4 +290,8 @@ class Config:
             errors.append("LLM_API_KEY is not configured")
         if not cls.ZEP_API_KEY:
             errors.append("ZEP_API_KEY is not configured")
+        if cls.CONSENSUS_AGENT_COUNT != 10:
+            errors.append("CONSENSUS_AGENT_COUNT must be 10 in V1")
+        if cls.CONSENSUS_ROUND_INTERVAL_SECONDS != 86400:
+            errors.append("CONSENSUS_ROUND_INTERVAL_SECONDS must be 86400 in V1")
         return errors

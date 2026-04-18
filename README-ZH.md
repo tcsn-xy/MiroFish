@@ -2,6 +2,18 @@
 
 <img src="./static/image/MiroFish_logo_compressed.jpeg" alt="MiroFish Logo" width="75%"/>
 
+传统Miro只是生成一个基于camel生成多个agents人格<br>
+生成一个报告出来<br>
+
+我对其进行大量改造,使Miro加入了新的长期多人格联网搜索证据的推理体系<br>
+新的页面是
+
+
+
+
+
+
+
 ## 🚀 快速开始
 
 ### 一、源码部署（推荐）
@@ -19,8 +31,6 @@
 ```bash
 # 复制示例配置文件
 cp .env.example .env
-
-# 编辑项目根目录 .env
 ```
 
 根目录 `.env` 是唯一的手动配置入口。数据库、Chroma、Embedding、World Info 与运行参数都在这里配置，不需要再修改 `backend/application.yml`。

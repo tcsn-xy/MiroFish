@@ -37,7 +37,8 @@ class LLMClient:
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        response_format: Optional[Dict] = None
+        response_format: Optional[Dict] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         发送聊天请求
@@ -60,6 +61,8 @@ class LLMClient:
         
         if response_format:
             kwargs["response_format"] = response_format
+        if extra_body:
+            kwargs["extra_body"] = extra_body
         
         response = self.client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content
@@ -71,7 +74,8 @@ class LLMClient:
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.3,
-        max_tokens: int = 4096
+        max_tokens: int = 4096,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         发送聊天请求并返回JSON
@@ -88,7 +92,8 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            extra_body=extra_body,
         )
         # 清理markdown代码块标记
         cleaned_response = response.strip()
@@ -101,3 +106,23 @@ class LLMClient:
         except json.JSONDecodeError:
             raise ValueError(f"LLM返回的JSON格式无效: {cleaned_response}")
 
+    def consensus_native_search_json(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.2,
+        max_tokens: int = 1200,
+        model: Optional[str] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        active_model = model or Config.CONSENSUS_MODEL_NAME
+        previous_model = self.model
+        try:
+            self.model = active_model
+            return self.chat_json(
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                extra_body=extra_body,
+            )
+        finally:
+            self.model = previous_model

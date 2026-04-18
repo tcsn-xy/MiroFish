@@ -36,6 +36,11 @@ def _reload_config(monkeypatch, overrides=None):
         "SIMULATION_CONTEXT_BUDGET_CHARS",
         "REPORT_CONTEXT_BUDGET_CHARS",
         "WORLD_INFO_INJECTION_CHARS",
+        "CONSENSUS_ENABLED",
+        "CONSENSUS_MODEL_NAME",
+        "CONSENSUS_AGENT_COUNT",
+        "CONSENSUS_ROUND_INTERVAL_SECONDS",
+        "CONSENSUS_NATIVE_SEARCH_EXTRA_BODY",
         "OASIS_DEFAULT_MAX_ROUNDS",
         "REPORT_AGENT_MAX_TOOL_CALLS",
         "REPORT_AGENT_MAX_REFLECTION_ROUNDS",
@@ -68,6 +73,9 @@ def test_config_uses_env_only_without_application_yml(monkeypatch):
             "WORLD_INFO_ENABLED": "false",
             "WORLD_INFO_SEARCH_TOP_K": "12",
             "WORLD_INFO_INJECTION_CHARS": "18000",
+            "CONSENSUS_ENABLED": "true",
+            "CONSENSUS_MODEL_NAME": "gpt-consensus",
+            "CONSENSUS_NATIVE_SEARCH_EXTRA_BODY": "{\"search\":true}",
         },
     )
 
@@ -85,6 +93,9 @@ def test_config_uses_env_only_without_application_yml(monkeypatch):
     assert config_module.Config.WORLD_INFO_ENABLED is False
     assert config_module.Config.WORLD_INFO_SEARCH_TOP_K == 12
     assert config_module.Config.WORLD_INFO_INJECTION_CHARS == 18000
+    assert config_module.Config.CONSENSUS_ENABLED is True
+    assert config_module.Config.CONSENSUS_MODEL_NAME == "gpt-consensus"
+    assert config_module.Config.CONSENSUS_NATIVE_SEARCH_EXTRA_BODY == "{\"search\":true}"
 
 
 def test_config_supports_chroma_http_mode(monkeypatch):
@@ -123,6 +134,9 @@ def test_config_defaults_still_work(monkeypatch):
     assert config_module.Config.REPORT_AGENT_TEMPERATURE == 0.5
     assert config_module.Config.ZEP_TRUST_ENV is False
     assert config_module.Config.ZEP_TIMEOUT_SECONDS == 60.0
+    assert config_module.Config.CONSENSUS_ENABLED is False
+    assert config_module.Config.CONSENSUS_AGENT_COUNT == 10
+    assert config_module.Config.CONSENSUS_ROUND_INTERVAL_SECONDS == 86400
 
 
 def test_config_supports_zep_network_overrides(monkeypatch):

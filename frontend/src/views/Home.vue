@@ -5,6 +5,9 @@
       <div class="nav-brand">MIROFISH</div>
       <div class="nav-links">
         <LanguageSwitcher />
+        <button class="worldinfo-link" @click="router.push('/consensus')">
+          {{ $t('home.consensusEntry') }}
+        </button>
         <button class="worldinfo-link" @click="router.push('/world-info-test')">
           World Info Test
         </button>
