@@ -8,6 +8,7 @@ environment variables with in-code defaults as the fallback.
 from __future__ import annotations
 
 import os
+import json
 from typing import Any, Dict
 from urllib.parse import parse_qs, urlparse
 
@@ -63,7 +64,32 @@ DEFAULT_APP_CONFIG: Dict[str, Any] = {
         "report_context_budget_chars": 20000,
         "world_info_injection_chars": 12000,
     },
+    "consensus": {
+        "enabled": True,
+        "poll_interval_seconds": 30,
+        "scheduler_tick_seconds": 2,
+        "max_parallelism": 6,
+        "temperature": 0.2,
+        "max_tokens": 1200,
+        "model_name": "",
+        "native_search_extra_body_json": '{"enable_search": true}',
+    },
 }
+
+
+def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    merged: Dict[str, Any] = {}
+    keys = set(base.keys()) | set(override.keys())
+    for key in keys:
+        base_value = base.get(key)
+        override_value = override.get(key)
+        if isinstance(base_value, dict) and isinstance(override_value, dict):
+            merged[key] = _deep_merge(base_value, override_value)
+        elif key in override:
+            merged[key] = override_value
+        else:
+            merged[key] = base_value
+    return merged
 
 
 def _coerce_env_value(raw: str, sample: Any) -> Any:
@@ -115,6 +141,14 @@ ENV_TO_CONFIG = {
     "SIMULATION_CONTEXT_BUDGET_CHARS": "world_info.simulation_context_budget_chars",
     "REPORT_CONTEXT_BUDGET_CHARS": "world_info.report_context_budget_chars",
     "WORLD_INFO_INJECTION_CHARS": "world_info.world_info_injection_chars",
+    "CONSENSUS_ENABLED": "consensus.enabled",
+    "CONSENSUS_POLL_INTERVAL_SECONDS": "consensus.poll_interval_seconds",
+    "CONSENSUS_SCHEDULER_TICK_SECONDS": "consensus.scheduler_tick_seconds",
+    "CONSENSUS_MAX_PARALLELISM": "consensus.max_parallelism",
+    "CONSENSUS_TEMPERATURE": "consensus.temperature",
+    "CONSENSUS_MAX_TOKENS": "consensus.max_tokens",
+    "CONSENSUS_MODEL_NAME": "consensus.model_name",
+    "CONSENSUS_NATIVE_SEARCH_EXTRA_BODY_JSON": "consensus.native_search_extra_body_json",
 }
 
 
@@ -127,6 +161,7 @@ def _load_application_config() -> Dict[str, Any]:
         },
         "embedding": dict(DEFAULT_APP_CONFIG["embedding"]),
         "world_info": dict(DEFAULT_APP_CONFIG["world_info"]),
+        "consensus": dict(DEFAULT_APP_CONFIG["consensus"]),
     }
     for env_name, dotted_path in ENV_TO_CONFIG.items():
         if env_name in os.environ:
@@ -175,6 +210,7 @@ class Config:
     LLM_BASE_URL = os.environ.get("LLM_BASE_URL") or _get_nested(APP_CONFIG, "llm.base_url")
     LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME") or _get_nested(APP_CONFIG, "llm.model_name")
     LLM_DEFAULT_MAX_TOKENS = int(_get_nested(APP_CONFIG, "llm.default_max_tokens", 4096))
+    LLM_TRUST_ENV = os.environ.get("LLM_TRUST_ENV", "false").lower() in {"1", "true", "yes", "on"}
 
     ZEP_API_KEY = os.environ.get("ZEP_API_KEY")
     ZEP_TRUST_ENV = os.environ.get("ZEP_TRUST_ENV", "false").lower() in {"1", "true", "yes", "on"}
@@ -247,6 +283,33 @@ class Config:
     WORLD_INFO_INJECTION_CHARS = int(
         _get_nested(APP_CONFIG, "world_info.world_info_injection_chars", 12000)
     )
+
+    CONSENSUS_ENABLED = bool(_get_nested(APP_CONFIG, "consensus.enabled", True))
+    CONSENSUS_POLL_INTERVAL_SECONDS = int(
+        _get_nested(APP_CONFIG, "consensus.poll_interval_seconds", 30)
+    )
+    CONSENSUS_SCHEDULER_TICK_SECONDS = int(
+        _get_nested(APP_CONFIG, "consensus.scheduler_tick_seconds", 2)
+    )
+    CONSENSUS_MAX_PARALLELISM = int(_get_nested(APP_CONFIG, "consensus.max_parallelism", 6))
+    CONSENSUS_TEMPERATURE = float(_get_nested(APP_CONFIG, "consensus.temperature", 0.2))
+    CONSENSUS_MAX_TOKENS = int(_get_nested(APP_CONFIG, "consensus.max_tokens", 1200))
+    CONSENSUS_MODEL_NAME = (
+        os.environ.get("CONSENSUS_MODEL_NAME")
+        or _get_nested(APP_CONFIG, "consensus.model_name")
+        or LLM_MODEL_NAME
+    )
+    _CONSENSUS_NATIVE_SEARCH_EXTRA_BODY_RAW = _get_nested(
+        APP_CONFIG,
+        "consensus.native_search_extra_body_json",
+        '{"enable_search": true}',
+    )
+    try:
+        CONSENSUS_NATIVE_SEARCH_EXTRA_BODY = json.loads(
+            _CONSENSUS_NATIVE_SEARCH_EXTRA_BODY_RAW
+        )
+    except (TypeError, json.JSONDecodeError):
+        CONSENSUS_NATIVE_SEARCH_EXTRA_BODY = {"enable_search": True}
 
     @classmethod
     def get_mysql_config(cls) -> Dict[str, Any]:

@@ -5,6 +5,9 @@
       <div class="nav-brand">MIROFISH</div>
       <div class="nav-links">
         <LanguageSwitcher />
+        <button class="worldinfo-link" @click="router.push('/consensus-qa')">
+          Consensus QA / 共识问答
+        </button>
         <button class="worldinfo-link" @click="router.push('/world-info-test')">
           World Info Test
         </button>

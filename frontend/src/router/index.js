@@ -6,6 +6,7 @@ import SimulationRunView from '../views/SimulationRunView.vue'
 import ReportView from '../views/ReportView.vue'
 import InteractionView from '../views/InteractionView.vue'
 import WorldInfoTestView from '../views/WorldInfoTestView.vue'
+import ConsensusQaView from '../views/ConsensusQaView.vue'
 
 const routes = [
   {
@@ -47,6 +48,11 @@ const routes = [
     path: '/world-info-test',
     name: 'WorldInfoTest',
     component: WorldInfoTestView
+  },
+  {
+    path: '/consensus-qa',
+    name: 'ConsensusQa',
+    component: ConsensusQaView
   }
 ]
 
