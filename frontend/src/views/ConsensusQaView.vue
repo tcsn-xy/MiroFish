@@ -43,6 +43,23 @@
           <label>阈值 %</label>
           <input v-model.number="thresholdPercent" type="number" min="1" max="100" />
 
+          <label>搜集间隔</label>
+          <div class="interval-inputs">
+            <input
+              v-model.number="pollIntervalValue"
+              type="number"
+              min="1"
+              step="1"
+              placeholder="30"
+            />
+            <select v-model="pollIntervalUnit">
+              <option value="seconds">秒</option>
+              <option value="minutes">分钟</option>
+              <option value="hours">小时</option>
+              <option value="days">天</option>
+            </select>
+          </div>
+
           <label>问题</label>
           <textarea
             v-model="questionText"
@@ -54,7 +71,7 @@
         <div class="actions">
           <button
             class="primary-btn"
-            :disabled="starting || !catalogReady || !questionText.trim()"
+            :disabled="starting || !catalogReady || !questionText.trim() || Boolean(pollIntervalError)"
             @click="handleStartTask"
           >
             {{ starting ? '启动中...' : '启动题目' }}
@@ -64,6 +81,7 @@
           </button>
         </div>
 
+        <div v-if="pollIntervalError" class="error-box">{{ pollIntervalError }}</div>
         <div v-if="errorMessage" class="error-box">{{ errorMessage }}</div>
       </section>
 
@@ -80,7 +98,6 @@
             class="persona-card"
           >
             <div class="persona-role">{{ persona.profession || 'Persona' }}</div>
-            <h3>{{ persona.name || persona.username || persona.user_id }}</h3>
             <p class="persona-bio">{{ persona.bio }}</p>
             <p class="persona-detail">{{ persona.persona }}</p>
           </article>
@@ -120,6 +137,10 @@
             <span class="status-label">是 / 否</span>
             <strong>{{ currentTask.last_yes_agents }} / {{ currentTask.last_no_agents }}</strong>
           </div>
+          <div class="status-card">
+            <span class="status-label">搜集间隔</span>
+            <strong>{{ formatPollInterval(currentTask.poll_interval_seconds) }}</strong>
+          </div>
           <div class="status-card wide">
             <span class="status-label">问题</span>
             <strong>{{ currentTask.question_text }}</strong>
@@ -153,8 +174,7 @@
           <article v-for="agent in agentCards" :key="agent.agent_source_id" class="agent-card">
             <button class="agent-header" @click="toggleAgent(agent.agent_source_id)">
               <div>
-                <div class="agent-name">{{ agent.agent_name }}</div>
-                <div class="agent-id">{{ agent.agent_source_id }}</div>
+                <div class="agent-name">{{ agent.profession || 'Persona' }}</div>
               </div>
               <div class="agent-answer" :class="answerClass(agent.card_answer)">
                 {{ getAnswerLabel(agent.card_answer) }}
@@ -246,6 +266,8 @@ const router = useRouter()
 const defaultCatalog = ref(null)
 const questionText = ref('')
 const thresholdPercent = ref(60)
+const pollIntervalValue = ref(30)
+const pollIntervalUnit = ref('seconds')
 
 const currentTask = ref(null)
 const agentCards = ref([])
@@ -264,6 +286,30 @@ let historyPollTimer = null
 
 const activeSimulationId = computed(() => defaultCatalog.value?.simulation_id || '')
 const catalogReady = computed(() => Boolean(activeSimulationId.value))
+const pollIntervalSeconds = computed(() => {
+  const value = Number(pollIntervalValue.value)
+  const unitMultipliers = {
+    seconds: 1,
+    minutes: 60,
+    hours: 3600,
+    days: 86400
+  }
+  return Number.isFinite(value) ? Math.floor(value * (unitMultipliers[pollIntervalUnit.value] || 1)) : 0
+})
+const pollIntervalError = computed(() => {
+  const rawValue = pollIntervalValue.value
+  if (!Number.isInteger(rawValue) || rawValue < 1) {
+    return '搜集间隔必须是正整数'
+  }
+  const seconds = pollIntervalSeconds.value
+  if (seconds < 30) {
+    return '搜集间隔不能少于 30 秒'
+  }
+  if (seconds > 30 * 24 * 60 * 60) {
+    return '搜集间隔不能超过 30 天'
+  }
+  return ''
+})
 
 const answerClass = (answer) => {
   if (answer === 'yes') return 'yes'
@@ -283,6 +329,15 @@ const getStatusLabel = (status) => {
   if (status === 'stopped') return '已停止'
   if (status === 'interrupted') return '已中断'
   return status || '-'
+}
+
+const formatPollInterval = (seconds) => {
+  const value = Number(seconds)
+  if (!Number.isFinite(value) || value <= 0) return '-'
+  if (value % 86400 === 0) return `${value / 86400} 天`
+  if (value % 3600 === 0) return `${value / 3600} 小时`
+  if (value % 60 === 0) return `${value / 60} 分钟`
+  return `${value} 秒`
 }
 
 const toggleAgent = (agentId) => {
@@ -363,13 +418,18 @@ const refreshConsensusView = async () => {
 }
 
 const handleStartTask = async () => {
+  if (pollIntervalError.value) {
+    errorMessage.value = pollIntervalError.value
+    return
+  }
   starting.value = true
   errorMessage.value = ''
   try {
     const res = await startConsensusTask({
       simulation_id: activeSimulationId.value,
       question_text: questionText.value,
-      threshold_percent: thresholdPercent.value
+      threshold_percent: thresholdPercent.value,
+      poll_interval_seconds: pollIntervalSeconds.value
     })
     currentTask.value = res.data
     questionText.value = ''
@@ -521,6 +581,25 @@ onUnmounted(() => {
   gap: 14px 16px;
 }
 
+.interval-inputs {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.interval-inputs input {
+  width: 140px;
+}
+
+.interval-inputs select {
+  min-width: 120px;
+  border: 1px solid #d9d4c9;
+  background: rgba(255, 250, 243, 0.9);
+  padding: 12px;
+  font: inherit;
+  color: #141414;
+}
+
 .form-grid label {
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
@@ -600,10 +679,6 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
 }
 
-.persona-card h3 {
-  margin: 0;
-}
-
 .persona-bio,
 .persona-detail {
   line-height: 1.5;
@@ -655,13 +730,6 @@ onUnmounted(() => {
 
 .agent-name {
   font-weight: 700;
-}
-
-.agent-id {
-  color: #72695c;
-  font-size: 13px;
-  margin-top: 6px;
-  font-family: 'JetBrains Mono', monospace;
 }
 
 .agent-answer {
@@ -779,6 +847,15 @@ onUnmounted(() => {
 @media (max-width: 960px) {
   .content {
     padding: 20px;
+  }
+
+  .interval-inputs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .interval-inputs input {
+    width: 100%;
   }
 
   .catalog-summary,

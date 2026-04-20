@@ -25,6 +25,7 @@ from .repository import ConsensusRepository
 from .utils import (
     generate_task_uid,
     get_persona_name,
+    get_persona_profession,
     get_persona_source_id,
     normalize_candidate_answer,
     sanitize_agent_payload,
@@ -33,6 +34,10 @@ from .utils import (
 )
 
 logger = get_logger("mirofish.consensus.service")
+
+
+MIN_CONSENSUS_POLL_INTERVAL_SECONDS = 30
+MAX_CONSENSUS_POLL_INTERVAL_SECONDS = 30 * 24 * 60 * 60
 
 
 CONSENSUS_SYSTEM_PROMPT = """
@@ -92,17 +97,52 @@ class ConsensusService:
     def _load_persona_bundle_for_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         return self._load_reddit_personas(task["simulation_id"])
 
+    def _normalize_poll_interval_seconds(self, value: Any = None) -> int:
+        if value in (None, ""):
+            value = Config.CONSENSUS_POLL_INTERVAL_SECONDS
+        if isinstance(value, bool):
+            raise ValueError("poll_interval_seconds must be an integer")
+        if isinstance(value, int):
+            interval = value
+        elif isinstance(value, str) and value.strip().isdigit():
+            interval = int(value.strip())
+        else:
+            raise ValueError("poll_interval_seconds must be an integer")
+        if interval < MIN_CONSENSUS_POLL_INTERVAL_SECONDS:
+            raise ValueError(
+                f"poll_interval_seconds must be at least {MIN_CONSENSUS_POLL_INTERVAL_SECONDS}"
+            )
+        if interval > MAX_CONSENSUS_POLL_INTERVAL_SECONDS:
+            raise ValueError(
+                f"poll_interval_seconds must be at most {MAX_CONSENSUS_POLL_INTERVAL_SECONDS}"
+            )
+        return interval
+
+    def _build_profession_by_agent_id(
+        self,
+        personas: List[Dict[str, Any]],
+    ) -> Dict[str, str]:
+        profession_by_agent_id: Dict[str, str] = {}
+        for index, profile in enumerate(personas):
+            agent_source_id = get_persona_source_id(profile, index)
+            profession_by_agent_id[agent_source_id] = get_persona_profession(profile)
+        return profession_by_agent_id
+
     def start_task(
         self,
         *,
         simulation_id: str,
         question_text: str,
         threshold_percent: int,
+        poll_interval_seconds: Any = None,
     ) -> Dict[str, Any]:
         if not question_text or not question_text.strip():
             raise ValueError("question_text is required")
         if threshold_percent < 1 or threshold_percent > 100:
             raise ValueError("threshold_percent must be between 1 and 100")
+        normalized_poll_interval_seconds = self._normalize_poll_interval_seconds(
+            poll_interval_seconds
+        )
 
         simulation_id = resolve_consensus_simulation_id(simulation_id)
         persona_bundle = self._load_reddit_personas(simulation_id)
@@ -122,7 +162,7 @@ class ConsensusService:
                 simulation_id=simulation_id,
                 question_text=question_text.strip(),
                 threshold_percent=threshold_percent,
-                poll_interval_seconds=Config.CONSENSUS_POLL_INTERVAL_SECONDS,
+                poll_interval_seconds=normalized_poll_interval_seconds,
                 total_agents=len(personas),
                 next_run_at=now,
             )
@@ -163,6 +203,14 @@ class ConsensusService:
                 return []
             judgments = self.repository.list_judgments(conn, task["id"])
 
+        try:
+            persona_bundle = self._load_persona_bundle_for_task(task)
+            profession_by_agent_id = self._build_profession_by_agent_id(
+                persona_bundle.get("personas", [])
+            )
+        except Exception:
+            profession_by_agent_id = {}
+
         grouped: Dict[str, Dict[str, Any]] = {}
         for item in judgments:
             agent_id = item["agent_source_id"]
@@ -171,6 +219,7 @@ class ConsensusService:
                 {
                     "agent_source_id": agent_id,
                     "agent_name": item["agent_name"],
+                    "profession": profession_by_agent_id.get(agent_id, "Persona"),
                     "card_answer": None,
                     "history": [],
                 },
@@ -214,12 +263,13 @@ class ConsensusService:
                 {
                     "agent_source_id": card["agent_source_id"],
                     "agent_name": card["agent_name"],
+                    "profession": card["profession"],
                     "card_answer": card_answer,
                     "history": history,
                 }
             )
 
-        cards.sort(key=lambda item: (item["agent_name"], item["agent_source_id"]))
+        cards.sort(key=lambda item: (item["profession"], item["agent_source_id"]))
         return cards
 
     def interrupt_running_tasks(self) -> int:

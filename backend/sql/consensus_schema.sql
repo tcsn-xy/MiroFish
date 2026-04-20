@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS consensus_tasks (
   question_text TEXT NOT NULL,
   persona_platform VARCHAR(16) NOT NULL DEFAULT 'reddit',
   threshold_percent TINYINT UNSIGNED NOT NULL,
-  poll_interval_seconds SMALLINT UNSIGNED NOT NULL DEFAULT 30,
+  poll_interval_seconds INT UNSIGNED NOT NULL DEFAULT 30,
   total_agents INT UNSIGNED NOT NULL,
   current_round_index INT UNSIGNED NOT NULL DEFAULT 0,
   last_answerable_agents INT UNSIGNED NOT NULL DEFAULT 0,

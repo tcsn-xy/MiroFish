@@ -112,10 +112,24 @@ class ConsensusRepository:
             rows = cursor.fetchall()
         return {row["Field"] for row in rows}
 
+    def _list_column_defs(self, conn, table_name: str) -> Dict[str, Dict[str, Any]]:
+        with conn.cursor() as cursor:
+            cursor.execute(f"SHOW COLUMNS FROM {table_name}")
+            rows = cursor.fetchall()
+        return {row["Field"]: row for row in rows}
+
     def _table_exists(self, conn, table_name: str) -> bool:
         with conn.cursor() as cursor:
             cursor.execute("SHOW TABLES LIKE %s", (table_name,))
             return cursor.fetchone() is not None
+
+    def _is_poll_interval_column_current(self, conn) -> bool:
+        task_columns = self._list_column_defs(conn, "consensus_tasks")
+        poll_interval = task_columns.get("poll_interval_seconds")
+        if not poll_interval:
+            return False
+        column_type = str(poll_interval.get("Type", "")).lower()
+        return column_type.startswith("int") and "unsigned" in column_type
 
     def _is_current_schema(self, conn) -> bool:
         if not self._table_exists(conn, "consensus_tasks"):
@@ -124,9 +138,20 @@ class ConsensusRepository:
             return False
         task_columns = self._list_columns(conn, "consensus_tasks")
         judgment_columns = self._list_columns(conn, "consensus_agent_judgments")
-        return self.REQUIRED_TASK_COLUMNS.issubset(task_columns) and self.REQUIRED_JUDGMENT_COLUMNS.issubset(
-            judgment_columns
+        return (
+            self.REQUIRED_TASK_COLUMNS.issubset(task_columns)
+            and self.REQUIRED_JUDGMENT_COLUMNS.issubset(judgment_columns)
+            and self._is_poll_interval_column_current(conn)
         )
+
+    def _migrate_poll_interval_column(self, conn) -> None:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                ALTER TABLE consensus_tasks
+                MODIFY poll_interval_seconds INT UNSIGNED NOT NULL DEFAULT 30
+                """
+            )
 
     def _archive_tables(self, conn, table_names: List[str]) -> None:
         existing = [name for name in table_names if self._table_exists(conn, name)]
@@ -179,6 +204,12 @@ class ConsensusRepository:
             judgment_current = judgment_exists and self.REQUIRED_JUDGMENT_COLUMNS.issubset(
                 self._list_columns(conn, "consensus_agent_judgments")
             )
+
+            if task_current and not self._is_poll_interval_column_current(conn):
+                self._migrate_poll_interval_column(conn)
+                task_current = self.REQUIRED_TASK_COLUMNS.issubset(
+                    self._list_columns(conn, "consensus_tasks")
+                ) and self._is_poll_interval_column_current(conn)
 
             if task_current and judgment_current:
                 return

@@ -255,6 +255,45 @@ def test_start_task_rejects_invalid_threshold(monkeypatch):
         )
 
 
+def test_start_task_uses_custom_poll_interval_seconds(monkeypatch):
+    service, _ = build_service(monkeypatch)
+
+    task = service.start_task(
+        simulation_id="sim_1",
+        question_text="Will X happen?",
+        threshold_percent=60,
+        poll_interval_seconds=3600,
+    )
+
+    assert task["poll_interval_seconds"] == 3600
+
+
+def test_start_task_uses_default_poll_interval_when_missing(monkeypatch):
+    service, _ = build_service(monkeypatch)
+    monkeypatch.setattr("app.consensus.service.Config.CONSENSUS_POLL_INTERVAL_SECONDS", 45)
+
+    task = service.start_task(
+        simulation_id="sim_1",
+        question_text="Will X happen?",
+        threshold_percent=60,
+    )
+
+    assert task["poll_interval_seconds"] == 45
+
+
+@pytest.mark.parametrize("poll_interval_seconds", [29, 30 * 24 * 60 * 60 + 1, "invalid"])
+def test_start_task_rejects_invalid_poll_interval(monkeypatch, poll_interval_seconds):
+    service, _ = build_service(monkeypatch)
+
+    with pytest.raises(ValueError, match="poll_interval_seconds"):
+        service.start_task(
+            simulation_id="sim_1",
+            question_text="Will X happen?",
+            threshold_percent=60,
+            poll_interval_seconds=poll_interval_seconds,
+        )
+
+
 def test_start_task_falls_back_to_default_personas_when_profiles_missing(monkeypatch):
     service, _ = build_service(monkeypatch)
     monkeypatch.setattr(
@@ -426,6 +465,97 @@ def test_run_due_round_keeps_running_on_tie(monkeypatch):
     assert updated["status"] == "running"
     assert updated["final_answer"] is None
     assert updated["current_round_index"] == 1
+
+
+def test_run_due_round_schedules_next_round_with_task_poll_interval(monkeypatch):
+    judgments = [
+        {
+            "agent_source_id": "u1",
+            "agent_name": "Alice",
+            "candidate_answer": "yes",
+            "is_answerable": 1,
+            "content_short": "yes",
+            "evidence_title": None,
+            "evidence_url": None,
+            "evidence_time": None,
+            "status": "completed",
+            "error_text": None,
+            "raw_response_json": {"candidate_answer": "yes"},
+        },
+        {
+            "agent_source_id": "u2",
+            "agent_name": "Bob",
+            "candidate_answer": "no",
+            "is_answerable": 1,
+            "content_short": "no",
+            "evidence_title": None,
+            "evidence_url": None,
+            "evidence_time": None,
+            "status": "completed",
+            "error_text": None,
+            "raw_response_json": {"candidate_answer": "no"},
+        },
+    ]
+    service, repo = build_service(monkeypatch, round_judgments=judgments)
+    task = service.start_task(
+        simulation_id="sim_1",
+        question_text="Question A",
+        threshold_percent=60,
+        poll_interval_seconds=7200,
+    )
+
+    service.run_due_round()
+
+    updated = repo.get_task_by_uid(repo, task["task_uid"])
+    last_polled_at = datetime.fromisoformat(updated["last_polled_at"])
+    next_run_at = datetime.fromisoformat(updated["next_run_at"])
+    assert (next_run_at - last_polled_at).total_seconds() == 7200
+
+
+def test_get_agents_view_returns_profession_without_name_fallback(monkeypatch):
+    personas = [
+        {"user_id": "u1", "name": "Alice", "profession": "AI engineer"},
+        {"user_id": "u2", "name": "Bob"},
+    ]
+    judgments = [
+        {
+            "agent_source_id": "u1",
+            "agent_name": "Alice",
+            "candidate_answer": "yes",
+            "is_answerable": 1,
+            "content_short": "yes",
+            "evidence_title": None,
+            "evidence_url": None,
+            "evidence_time": None,
+            "status": "completed",
+            "error_text": None,
+            "raw_response_json": {"candidate_answer": "yes"},
+        },
+        {
+            "agent_source_id": "u2",
+            "agent_name": "Bob",
+            "candidate_answer": "no",
+            "is_answerable": 1,
+            "content_short": "no",
+            "evidence_title": None,
+            "evidence_url": None,
+            "evidence_time": None,
+            "status": "completed",
+            "error_text": None,
+            "raw_response_json": {"candidate_answer": "no"},
+        },
+    ]
+    service, _ = build_service(monkeypatch, personas=personas, round_judgments=judgments)
+    task = service.start_task(
+        simulation_id="sim_1",
+        question_text="Question A",
+        threshold_percent=60,
+    )
+    service.run_due_round()
+
+    cards = service.get_agents_view(task["task_uid"])
+
+    assert [card["profession"] for card in cards] == ["AI engineer", "Persona"]
 
 
 def test_stop_task_marks_task_stopped(monkeypatch):

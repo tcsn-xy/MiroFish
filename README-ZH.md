@@ -2,6 +2,15 @@
 
 <img src="./static/image/MiroFish_logo_compressed.jpeg" alt="MiroFish Logo" width="75%"/>
 
+## Consensus QA 设计说明
+![img.png](img.png)
+`/consensus-qa` 是一个基于默认 persona catalog 的 yes/no 共识问答页，目标是让系统直接用一组固定视角发起判断，不需要手动挑选 simulation。
+
+- 默认 persona 卡片和任务 agent 卡片都只展示职业，不展示人物名字。
+- 启动题目时可以自定义 AI 自动搜集信息的间隔，支持秒、分钟、小时、天四种单位。
+- 间隔是任务级配置，会保存到当前题目并影响后端下一轮自动判断的调度时间。
+- 页面保留当前任务、轮次历史和结果状态展示，方便持续观察共识收敛过程。
+
 ## 🚀 快速开始
 
 ### 一、源码部署（推荐）

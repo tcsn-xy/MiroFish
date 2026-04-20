@@ -23,6 +23,7 @@ def start_consensus_task():
             simulation_id=data.get("simulation_id", ""),
             question_text=data.get("question_text", ""),
             threshold_percent=int(data.get("threshold_percent", 0)),
+            poll_interval_seconds=data.get("poll_interval_seconds"),
         )
         get_consensus_scheduler().wake()
         return jsonify({"success": True, "data": task})

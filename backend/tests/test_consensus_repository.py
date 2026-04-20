@@ -5,6 +5,25 @@ from pathlib import Path
 from app.consensus.repository import ConsensusRepository
 
 
+def current_task_columns():
+    return {
+        column: {"Field": column, "Type": "varchar(255)"}
+        for column in ConsensusRepository.REQUIRED_TASK_COLUMNS
+    } | {
+        "poll_interval_seconds": {
+            "Field": "poll_interval_seconds",
+            "Type": "int unsigned",
+        }
+    }
+
+
+def current_judgment_columns():
+    return {
+        column: {"Field": column, "Type": "varchar(255)"}
+        for column in ConsensusRepository.REQUIRED_JUDGMENT_COLUMNS
+    }
+
+
 class FakeCursor:
     def __init__(self, state):
         self.state = state
@@ -18,7 +37,11 @@ class FakeCursor:
             return
         if sql.startswith("SHOW COLUMNS FROM"):
             table_name = sql.split()[-1]
-            self._rows = [{"Field": name} for name in self.state["tables"].get(table_name, set())]
+            columns = self.state["tables"].get(table_name, {})
+            if isinstance(columns, dict):
+                self._rows = list(columns.values())
+            else:
+                self._rows = [{"Field": name, "Type": "varchar(255)"} for name in columns]
             return
         if sql.startswith("DROP TABLE IF EXISTS consensus_agent_judgments"):
             self.state["tables"].pop("consensus_agent_judgments", None)
@@ -34,13 +57,18 @@ class FakeCursor:
                 target = target_part.strip().strip("`")
                 self.state["tables"][target] = self.state["tables"].pop(source)
             return
+        if sql.startswith("ALTER TABLE consensus_tasks MODIFY poll_interval_seconds"):
+            self.state.setdefault("alters", []).append(sql)
+            self.state["tables"]["consensus_tasks"]["poll_interval_seconds"] = {
+                "Field": "poll_interval_seconds",
+                "Type": "int unsigned",
+            }
+            return
         if "CREATE TABLE IF NOT EXISTS consensus_tasks" in sql:
-            self.state["tables"]["consensus_tasks"] = set(ConsensusRepository.REQUIRED_TASK_COLUMNS)
+            self.state["tables"]["consensus_tasks"] = current_task_columns()
             return
         if "CREATE TABLE IF NOT EXISTS consensus_agent_judgments" in sql:
-            self.state["tables"]["consensus_agent_judgments"] = set(
-                ConsensusRepository.REQUIRED_JUDGMENT_COLUMNS
-            )
+            self.state["tables"]["consensus_agent_judgments"] = current_judgment_columns()
             return
         raise AssertionError(f"Unexpected SQL: {sql}")
 
@@ -74,7 +102,11 @@ def test_ensure_tables_exist_rebuilds_legacy_schema(monkeypatch, tmp_path):
 
     state = {
         "tables": {
-            "consensus_tasks": {"id", "question", "status"},
+            "consensus_tasks": {
+                "id": {"Field": "id", "Type": "bigint unsigned"},
+                "question": {"Field": "question", "Type": "text"},
+                "status": {"Field": "status", "Type": "varchar(32)"},
+            },
         }
     }
     conn = FakeConnection(state)
@@ -98,3 +130,39 @@ def test_ensure_tables_exist_rebuilds_legacy_schema(monkeypatch, tmp_path):
     assert ConsensusRepository.REQUIRED_JUDGMENT_COLUMNS.issubset(
         state["tables"]["consensus_agent_judgments"]
     )
+
+
+def test_ensure_tables_exist_migrates_poll_interval_to_int_unsigned(monkeypatch, tmp_path):
+    repo = object.__new__(ConsensusRepository)
+    repo.REQUIRED_TASK_COLUMNS = ConsensusRepository.REQUIRED_TASK_COLUMNS
+    repo.REQUIRED_JUDGMENT_COLUMNS = ConsensusRepository.REQUIRED_JUDGMENT_COLUMNS
+
+    task_columns = current_task_columns()
+    task_columns["poll_interval_seconds"] = {
+        "Field": "poll_interval_seconds",
+        "Type": "smallint unsigned",
+    }
+    state = {
+        "tables": {
+            "consensus_tasks": task_columns,
+            "consensus_agent_judgments": current_judgment_columns(),
+        }
+    }
+    conn = FakeConnection(state)
+    schema_path = Path(tmp_path) / "consensus_schema.sql"
+    schema_path.write_text(
+        """
+        CREATE TABLE IF NOT EXISTS consensus_tasks (id BIGINT);
+        CREATE TABLE IF NOT EXISTS consensus_agent_judgments (id BIGINT);
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(repo, "_schema_path", lambda: str(schema_path))
+
+    repo._ensure_tables_exist(conn)
+
+    assert state["tables"]["consensus_tasks"]["poll_interval_seconds"]["Type"] == "int unsigned"
+    assert state["alters"] == [
+        "ALTER TABLE consensus_tasks MODIFY poll_interval_seconds INT UNSIGNED NOT NULL DEFAULT 30"
+    ]

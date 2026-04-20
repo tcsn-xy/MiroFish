@@ -71,6 +71,14 @@ def get_persona_name(profile: Dict[str, Any], fallback_index: int) -> str:
     return f"Agent {fallback_index}"
 
 
+def get_persona_profession(profile: Dict[str, Any]) -> str:
+    for key in ("profession", "occupation", "job_title", "role"):
+        value = profile.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return "Persona"
+
+
 def sanitize_agent_payload(payload: Dict[str, Any], status: str = "completed") -> Dict[str, Any]:
     payload = safe_json(payload)
     candidate_answer = normalize_candidate_answer(payload.get("candidate_answer"))
@@ -95,4 +103,3 @@ def sanitize_agent_payload(payload: Dict[str, Any], status: str = "completed") -
         "error_text": truncate_text(payload.get("error_text"), limit=255) or None,
         "raw_response_json": payload,
     }
-

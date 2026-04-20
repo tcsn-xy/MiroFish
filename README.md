@@ -144,3 +144,12 @@ docker compose up -d
 Reads the repository-root `.env` by default and maps ports `3000 (frontend) / 5001 (backend)`. When `CHROMA_MODE=persistent`, Chroma data is stored under `backend/uploads/chroma`, which remains covered by the existing volume mapping.
 
 > Mirror address for faster pulling is provided as comments in `docker-compose.yml`, replace if needed.
+
+## Consensus QA Design
+
+`/consensus-qa` is a yes/no consensus workflow built on top of the default persona catalog. The goal is to launch consensus questions directly from a fixed set of viewpoints without manually selecting a simulation.
+
+- Default persona cards and task agent cards show profession only, not personal names.
+- Each task can define its own AI auto-collection interval, with units in seconds, minutes, hours, or days.
+- The interval is stored per task and drives the backend schedule for the next round of automated search and judgment.
+- The page keeps the current task, round history, and result status visible so the convergence process can be observed over time.
